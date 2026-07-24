@@ -19,12 +19,20 @@ Set-StrictMode -Version Latest
 # PS 5.1 on older builds negotiates TLS 1.0 by default; nodejs.org requires 1.2+.
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
+# Invoke-WebRequest renders a progress bar per chunk, which dominates runtime on
+# 5.1 and can turn a ~30 MB download into a multi-minute one. Suppressing it is
+# the single biggest speed win here.
+$ProgressPreference = 'SilentlyContinue'
+
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $nodeDir = Join-Path $repoRoot 'runtime\node'
 $tmpDir = Join-Path $repoRoot 'state\tmp'
 
+# Plain stderr rather than Write-Error: under $ErrorActionPreference = 'Stop' the
+# latter throws and prints a multi-line exception blob, burying the message the
+# user actually needs to act on.
 function Fail($message) {
-    Write-Error "Error: $message"
+    [Console]::Error.WriteLine("Error: $message")
     exit 1
 }
 
@@ -34,19 +42,25 @@ function Get-NodeVersion {
     if (-not (Test-Path -LiteralPath $bootstrapCjs)) {
         Fail "Missing $bootstrapCjs - cannot determine the pinned Node.js version."
     }
-    $match = Select-String -LiteralPath $bootstrapCjs -Pattern "^const NODE_VERSION = '(v[\d.]+)';" |
-        Select-Object -First 1
-    if (-not $match) {
+    # .NET regex rather than Select-String, for the same 5.1 module reason as Get-Sha256.
+    $match = [regex]::Match(
+        [IO.File]::ReadAllText($bootstrapCjs),
+        "(?m)^const NODE_VERSION = '(v[\d.]+)';"
+    )
+    if (-not $match.Success) {
         Fail "Could not parse NODE_VERSION from $bootstrapCjs."
     }
-    return $match.Matches[0].Groups[1].Value
+    return $match.Groups[1].Value
 }
 
 function Get-NodeArch {
-    switch ($env:PROCESSOR_ARCHITECTURE) {
-        'ARM64' { return 'arm64' }
-        default { return 'x64' }
-    }
+    # A 32-bit PowerShell on a 64-bit OS reports x86 in PROCESSOR_ARCHITECTURE and
+    # puts the real one in PROCESSOR_ARCHITEW6432; without this, an ARM64 host
+    # would silently get the x64 build and run Node under emulation.
+    $arch = $env:PROCESSOR_ARCHITEW6432
+    if (-not $arch) { $arch = $env:PROCESSOR_ARCHITECTURE }
+    if ($arch -eq 'ARM64') { return 'arm64' }
+    return 'x64'
 }
 
 # .NET rather than Get-FileHash: the Utility module cmdlet is not always
