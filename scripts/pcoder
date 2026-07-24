@@ -19,7 +19,7 @@ fi
 # No Node anywhere. Download a portable one, then continue. The guard stops a
 # failed bootstrap from looping when we re-exec.
 BOOTSTRAP_SH="${SCRIPT_DIR}/runtime/bootstrap-node.sh"
-if [[ -z "${PCODER_NODE_BOOTSTRAPPED:-}" && -z "${PCODER_NO_AUTO_BOOTSTRAP:-}" && -f "${BOOTSTRAP_SH}" ]]; then
+if [[ -z "${PCODER_NODE_BOOTSTRAPPED:-}" && "${PCODER_AUTO_BOOTSTRAP:-}" != '0' && -f "${BOOTSTRAP_SH}" ]]; then
   export PCODER_NODE_BOOTSTRAPPED=1
   if bash "${BOOTSTRAP_SH}" && [[ -x "${PORTABLE_NODE}" ]]; then
     echo ''

@@ -74,7 +74,7 @@ powershell -ExecutionPolicy Bypass -File scripts\runtime\bootstrap-node.ps1
 bash scripts/runtime/bootstrap-node.sh
 ```
 
-To turn the automatic step off — for an air-gapped host, or when you'd rather supply Node.js yourself — set `PCODER_NO_AUTO_BOOTSTRAP=1`. `pcoder` will then fail with instructions instead of downloading anything.
+To turn the automatic step off — for an air-gapped host, or when you'd rather supply Node.js yourself — set `PCODER_AUTO_BOOTSTRAP=0` (matching `PCODER_AUTO_UPDATE=0`). `pcoder` will then fail with instructions instead of downloading anything.
 
 After the first bootstrap the whole folder is self-contained: copy it to a machine with no Node.js at all and it runs as-is.
 
