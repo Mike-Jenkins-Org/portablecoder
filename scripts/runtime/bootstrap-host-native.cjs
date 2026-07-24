@@ -82,6 +82,15 @@ function main(argv) {
   } else if (!force && fs.existsSync(nodeExe)) {
     console.log(`Bundled Node.js already present: ${nodeExe}`);
     console.log('Use --force to re-download.');
+  } else if (force && fs.existsSync(nodeExe) && runningOnBundledNode()) {
+    // --force would delete the interpreter currently executing this script.
+    // On Windows that fails outright with EPERM; everywhere else it is still
+    // the wrong thing to do mid-run. Updating the tools is the common reason
+    // to pass --force, so skip Node rather than aborting the whole bootstrap.
+    console.log(`Keeping bundled Node.js: ${nodeExe}`);
+    console.log('It is the interpreter running this bootstrap, so it cannot replace itself.');
+    console.log('To force a Node.js re-download, run this script with a system Node.js.');
+    console.log('');
   } else {
     downloadAndExtractNode(nodeUrl, platform);
   }
@@ -226,6 +235,20 @@ function installNpmPackage(targetDir, pkg, displayName) {
   }
 
   console.log(`${displayName} installed.`);
+}
+
+// Is this bootstrap being executed by the Node.js it would otherwise replace?
+// True whenever pcoder launched us with the bundled runtime, which is the
+// normal case once the folder has been set up.
+function runningOnBundledNode() {
+  try {
+    return (
+      path.resolve(process.execPath).toLowerCase() ===
+      path.resolve(getBundledNodeExePath()).toLowerCase()
+    );
+  } catch (_) {
+    return false;
+  }
 }
 
 function buildNodeUrl(platform, arch) {

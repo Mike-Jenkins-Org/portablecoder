@@ -9,7 +9,9 @@ const {
   shellEscape,
   compareVersions,
   isUpdateCheckDue,
-  readBundledToolVersion
+  readBundledToolVersion,
+  resolveAuthArgs,
+  meetsMinVersion
 } = require('../scripts/pcoder.cjs');
 
 test('parseRunArgs: flags before -- are parsed, args after -- pass through', () => {
@@ -123,6 +125,61 @@ test('node-version.txt: pinned version is well-formed and read by every bootstra
       `${file} hardcodes a Node.js version instead of reading node-version.txt`
     );
   }
+});
+
+test('resolveAuthArgs: catalog login_args win, bare verb otherwise', () => {
+  assert.deepEqual(resolveAuthArgs({ login_args: ['login', '--device-auth'] }, 'login'), [
+    'login',
+    '--device-auth'
+  ]);
+  // logout is unaffected by login_args
+  assert.deepEqual(resolveAuthArgs({ login_args: ['login', '--device-auth'] }, 'logout'), [
+    'logout'
+  ]);
+  assert.deepEqual(resolveAuthArgs({ logout_args: ['logout', '--all'] }, 'logout'), [
+    'logout',
+    '--all'
+  ]);
+  // absent, empty, or malformed config falls back to the bare verb
+  assert.deepEqual(resolveAuthArgs({}, 'login'), ['login']);
+  assert.deepEqual(resolveAuthArgs({ login_args: [] }, 'login'), ['login']);
+  assert.deepEqual(resolveAuthArgs({ login_args: 'login' }, 'login'), ['login']);
+  assert.deepEqual(resolveAuthArgs(undefined, 'login'), ['login']);
+});
+
+test('resolveAuthArgs: returns a copy, so callers cannot mutate the catalog', () => {
+  const meta = { login_args: ['login', '--device-auth'] };
+  resolveAuthArgs(meta, 'login').push('--oops');
+  assert.deepEqual(meta.login_args, ['login', '--device-auth']);
+});
+
+test('catalog: codex logs in with --device-auth, claude with a plain login', () => {
+  const catalog = require('../scripts/adapters/catalog.json');
+  assert.deepEqual(resolveAuthArgs(catalog.codex, 'login'), ['login', '--device-auth']);
+  assert.deepEqual(resolveAuthArgs(catalog.claude, 'login'), ['login']);
+  assert.deepEqual(resolveAuthArgs(catalog.codex, 'logout'), ['logout']);
+});
+
+test('meetsMinVersion: gates the login flow, fails open on unknowns', () => {
+  // --device-auth landed in codex 0.46.0; 0.45.0 was the last release without it.
+  assert.equal(meetsMinVersion('0.45.0', '0.46.0'), false);
+  assert.equal(meetsMinVersion('0.46.0', '0.46.0'), true);
+  assert.equal(meetsMinVersion('0.145.0', '0.46.0'), true, 'must compare numerically, not as text');
+  assert.equal(meetsMinVersion('0.9.0', '0.46.0'), false);
+  // Unknown installed version (command_env override, or an unreadable
+  // package.json) must not block a login we cannot prove is broken.
+  assert.equal(meetsMinVersion(null, '0.46.0'), true);
+  // No minimum configured means no gate.
+  assert.equal(meetsMinVersion('0.1.0', undefined), true);
+});
+
+test('catalog: codex pins the version that introduced --device-auth', () => {
+  const catalog = require('../scripts/adapters/catalog.json');
+  assert.equal(catalog.codex.login_min_version, '0.46.0');
+  assert.equal(meetsMinVersion('0.45.0', catalog.codex.login_min_version), false);
+  assert.equal(meetsMinVersion('0.46.0', catalog.codex.login_min_version), true);
+  // claude has no login flags, so it needs no gate
+  assert.equal(catalog.claude.login_min_version, undefined);
 });
 
 test('readBundledToolVersion: returns a version string or null, never throws', () => {

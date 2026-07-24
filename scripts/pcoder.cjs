@@ -297,6 +297,22 @@ function commandAuth(args) {
     console.log(`[warn] ${tool} auth mode is api; OAuth login is optional.`);
   }
 
+  const toolAuthArgs = resolveAuthArgs(meta, action);
+
+  // The configured login argv can rely on flags a older build does not have
+  // (codex gained --device-auth in 0.46.0). Catch that here with a fixable
+  // instruction, rather than letting the tool fail on an unknown argument.
+  if (action === 'login' && meta.login_min_version) {
+    const installed = readBundledToolVersion(tool, meta);
+    if (!meetsMinVersion(installed, meta.login_min_version)) {
+      fail(
+        `${meta.display_name} ${installed} is older than ${meta.login_min_version}, which ` +
+          `'${toolAuthArgs.join(' ')}' requires.\n` +
+          `Update it with: pcoder runtime bootstrap-host-native --tool ${tool} --force --no-node`
+      );
+    }
+  }
+
   // For the duration of the auth subcommand, force oauth env wiring so the
   // tool writes credentials into our portable auth home rather than relying
   // on an API key.
@@ -313,7 +329,7 @@ function commandAuth(args) {
       tool,
       projectPath: repoRoot,
       mergedEnv: applyPortableHostAuthEnv({ ...process.env }, authCommandSettings, tool),
-      toolArgs: [action],
+      toolArgs: toolAuthArgs,
       noSyncBack: true,
       skipProjectSync: true,
       authMode: 'oauth',
@@ -340,15 +356,39 @@ function commandAuth(args) {
   applyBundledNodePath(env);
   applyClaudeWindowsShellEnv(env, tool);
 
-  const result = spawnToolSync(runner, [action], {
+  const result = spawnToolSync(runner, toolAuthArgs, {
     cwd: repoRoot,
     stdio: 'inherit',
     env
   });
   if (result.error) {
-    fail(`Failed to run ${tool} ${action}: ${result.error.message}`);
+    fail(`Failed to run ${tool} ${toolAuthArgs.join(' ')}: ${result.error.message}`);
   }
   process.exitCode = typeof result.status === 'number' ? result.status : 1;
+}
+
+// Does the installed tool satisfy the minimum its login flow needs?
+// Unknown installed version means the tool is not our bundled copy (a
+// command_env override, or a system install), so we fail open rather than
+// block a login over a version we cannot actually read.
+function meetsMinVersion(installed, minVersion) {
+  if (!minVersion) return true;
+  if (!installed) return true;
+  return compareVersions(installed, minVersion) >= 0;
+}
+
+// Build the argv a tool is invoked with for `pcoder auth login|logout`.
+// Catalog-driven so a tool whose login flow needs flags (codex uses
+// `--device-auth`, which prints a code to enter on another device instead of
+// opening a browser and listening on localhost) needs no code change here.
+// Falls back to the bare verb, which is what most CLIs expect.
+function resolveAuthArgs(meta, action) {
+  const key = action === 'login' ? 'login_args' : 'logout_args';
+  const configured = meta && meta[key];
+  if (Array.isArray(configured) && configured.length > 0) {
+    return configured.slice();
+  }
+  return [action];
 }
 
 function commandRuntime(args) {
@@ -1811,5 +1851,7 @@ module.exports = {
   escapeCmdArg,
   compareVersions,
   isUpdateCheckDue,
-  readBundledToolVersion
+  readBundledToolVersion,
+  resolveAuthArgs,
+  meetsMinVersion
 };
