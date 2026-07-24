@@ -149,6 +149,8 @@ Use the bootstrap with `--force` — it pulls the latest version published to np
 scripts\pcoder runtime bootstrap-host-native --tool all --force
 ```
 
+`--force` re-installs the tools but keeps the bundled Node.js, which cannot replace itself while it is the interpreter running the bootstrap. To force a Node.js re-download too, run `scripts/runtime/bootstrap-host-native.cjs` with a system Node.js, or delete `runtime/node/` first and let it re-bootstrap.
+
 > **Warning:** Do **not** use the tools' built-in self-updaters (`claude --update`, `codex update`, …) on a pcoder install. They rewrite their own binary in place, and the bundled install hardlinks that binary across two locations — an interrupted update breaks the next launch. `pcoder` refuses these invocations; set `PCODER_ALLOW_TOOL_UPDATE=1` to bypass (not recommended).
 
 ## 🔐 Authentication
