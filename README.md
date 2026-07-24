@@ -6,7 +6,7 @@
 
 **Claude Code and OpenAI Codex on any Windows, macOS, or Linux machine — or a flash drive — with no system-wide install.**
 
-[![CI](https://github.com/mjenkinsx9/portablecoder/actions/workflows/ci.yml/badge.svg)](https://github.com/mjenkinsx9/portablecoder/actions/workflows/ci.yml)
+[![CI](https://github.com/Mike-Jenkins-Org/portablecoder/actions/workflows/ci.yml/badge.svg)](https://github.com/Mike-Jenkins-Org/portablecoder/actions/workflows/ci.yml)
 ![Node](https://img.shields.io/badge/node-22.x_bundled-339933?logo=nodedotjs&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-windows%20%7C%20linux%20%7C%20macos-lightgrey)
 ![Tools](https://img.shields.io/badge/launches-Claude_Code_%7C_Codex_CLI-blue)
@@ -25,13 +25,13 @@ PortableCoder bundles a portable Node.js runtime and the selected tool's npm pac
 
 | 🚀 Portable runtime | 🔐 Portable auth | 🔄 Auto-updates | 🛡️ VM mode |
 |---|---|---|---|
-| Bundled Node.js + tool installs under `runtime/` — no system Node needed after first bootstrap | OAuth credentials live in `state/auth/<tool>/` and travel with the folder | Daily npm check at launch, fail-open when offline, safe reinstall path | Optional QEMU Linux VM on Windows for isolated runs (Claude only) |
+| Bundled Node.js + tool installs under `runtime/` — no system Node needed, ever: `pcoder` bootstraps its own | OAuth credentials live in `state/auth/<tool>/` and travel with the folder | Daily npm check at launch, fail-open when offline, safe reinstall path | Optional QEMU Linux VM on Windows for isolated runs (Claude only) |
 
 ## 🚀 Quick start
 
 ### 1 · Bootstrap (first time only)
 
-The first run needs Node.js available on the machine to execute the bootstrap (the bootstrap itself downloads a portable Node.js into `runtime/node/`, verified against the official SHA-256 checksums). After that, every run uses the bundled Node — the folder can be copied to a machine with no Node at all.
+**No system Node.js required.** Clone the repo and run the commands below — `pcoder` obtains its own Node.js on first use.
 
 ```bat
 :: Windows
@@ -45,7 +45,38 @@ scripts/pcoder setup --init
 scripts/pcoder runtime bootstrap-host-native --tool all
 ```
 
-This downloads a portable Node.js and installs the requested tools into the folder (~50 MB per tool). Pass `--tool claude` or `--tool codex` to install just one. Run `scripts\pcoder doctor` afterwards to verify — it reports the resolved runner for every supported tool.
+This installs the requested tools into the folder (~50 MB per tool). Pass `--tool claude` or `--tool codex` to install just one. Run `pcoder doctor` afterwards to verify — it reports the resolved runner for every supported tool.
+
+#### How Node.js gets there
+
+`runtime/` is gitignored, so a fresh clone contains **no** bundled Node.js. `pcoder` resolves a runtime in three steps:
+
+1. bundled `runtime/node/` — used if present
+2. system `node` on `PATH` — used if found
+3. **neither: auto-bootstrap.** `pcoder` downloads a portable Node.js into `runtime/node/`, verifies it against the official `SHASUMS256.txt`, extracts it, and re-runs itself. Nothing is installed system-wide and nothing outside the folder is touched.
+
+Step 3 runs without Node.js by design — the regular bootstrap (`bootstrap-host-native.cjs`) can't do this job because it is itself a Node script:
+
+| Host | Script | Requires |
+| --- | --- | --- |
+| Windows | `scripts\runtime\bootstrap-node.ps1` | Windows PowerShell 5.1 (built in) or `pwsh` |
+| Linux / macOS | `scripts/runtime/bootstrap-node.sh` | `bash`, `curl` **or** `wget`, `tar`, and `xz` on Linux |
+
+Ubuntu and Alma/RHEL have everything needed out of the box, except that **minimal RHEL/Alma images may omit `xz`** — install it with `sudo dnf install -y xz` (Debian/Ubuntu: `sudo apt-get install -y xz-utils`) if the bootstrap asks for it.
+
+You can also run either script directly, for example to pre-seed a machine before using `pcoder`:
+
+```bat
+powershell -ExecutionPolicy Bypass -File scripts\runtime\bootstrap-node.ps1
+```
+
+```bash
+bash scripts/runtime/bootstrap-node.sh
+```
+
+To turn the automatic step off — for an air-gapped host, or when you'd rather supply Node.js yourself — set `PCODER_AUTO_BOOTSTRAP=0` (matching `PCODER_AUTO_UPDATE=0`). `pcoder` will then fail with instructions instead of downloading anything.
+
+After the first bootstrap the whole folder is self-contained: copy it to a machine with no Node.js at all and it runs as-is.
 
 ### 2 · Authenticate
 
@@ -204,6 +235,8 @@ PortableCoder/
     adapters/catalog.json      ← tool adapter definitions (claude, codex, …)
     runtime/
       bootstrap-host-native.cjs  ← downloads Node + tools, verifies checksums
+      bootstrap-node.ps1         ← no-Node fallback for Windows (PowerShell)
+      bootstrap-node.sh          ← no-Node fallback for Linux/macOS (bash)
       windows/                   ← QEMU VM helper scripts
       linux/smoke-check.sh       ← Linux smoke test
   tests/                       ← unit tests (node:test, zero dependencies)

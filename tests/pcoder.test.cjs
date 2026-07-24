@@ -102,6 +102,29 @@ test('isUpdateCheckDue: 24h window', () => {
   assert.equal(isUpdateCheckDue({ last_check: 'garbage' }, now), true);
 });
 
+// The three bootstrappers (bootstrap-host-native.cjs, bootstrap-node.ps1,
+// bootstrap-node.sh) must agree on the pinned Node.js version. The two shell
+// ones exist to run on machines with no Node, so a mismatch here would only
+// surface on exactly the bare hosts that cannot debug it.
+test('node-version.txt: pinned version is well-formed and read by every bootstrapper', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const runtimeDir = path.join(__dirname, '..', 'scripts', 'runtime');
+
+  const version = fs.readFileSync(path.join(runtimeDir, 'node-version.txt'), 'utf8').trim();
+  assert.match(version, /^v\d+\.\d+\.\d+$/);
+
+  // Each bootstrapper must reference the data file rather than hardcoding a version.
+  for (const file of ['bootstrap-host-native.cjs', 'bootstrap-node.ps1', 'bootstrap-node.sh']) {
+    const source = fs.readFileSync(path.join(runtimeDir, file), 'utf8');
+    assert.ok(source.includes('node-version.txt'), `${file} does not read node-version.txt`);
+    assert.ok(
+      !/['"]v\d+\.\d+\.\d+['"]/.test(source),
+      `${file} hardcodes a Node.js version instead of reading node-version.txt`
+    );
+  }
+});
+
 test('readBundledToolVersion: returns a version string or null, never throws', () => {
   const claudeVersion = readBundledToolVersion('claude', {
     npm_package: '@anthropic-ai/claude-code'

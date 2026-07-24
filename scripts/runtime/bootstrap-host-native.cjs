@@ -10,9 +10,29 @@ const {
   getBundledNodeExePath, getBundledToolDir, getBundledToolBinPath, getBundledNpmCliPath
 } = require('../lib/paths.cjs');
 
-const NODE_VERSION = 'v22.14.0';
 const tmpDir = path.join(repoRoot, 'state', 'tmp');
 const catalogPath = path.join(__dirname, '..', 'adapters', 'catalog.json');
+const nodeVersionPath = path.join(__dirname, 'node-version.txt');
+
+// The pinned version lives in a data file, not in this source, because the
+// no-Node bootstrappers (bootstrap-node.ps1 / bootstrap-node.sh) need it too
+// and cannot execute this file to get it. Keeping it as data means reformatting
+// this script can never silently break them.
+function readPinnedNodeVersion() {
+  let raw;
+  try {
+    raw = fs.readFileSync(nodeVersionPath, 'utf8');
+  } catch (error) {
+    fail(`Failed to read ${nodeVersionPath}: ${error.message}`);
+  }
+  const version = raw.trim();
+  if (!/^v\d+\.\d+\.\d+$/.test(version)) {
+    fail(`Invalid Node.js version in ${nodeVersionPath}: ${JSON.stringify(version)}`);
+  }
+  return version;
+}
+
+const NODE_VERSION = readPinnedNodeVersion();
 
 function loadCatalog() {
   try {
