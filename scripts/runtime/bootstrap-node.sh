@@ -8,8 +8,9 @@
 # re-execs.
 #
 # Mirrors downloadAndExtractNode() in bootstrap-host-native.cjs: same dist URL,
-# same SHASUMS256.txt verification, same runtime/node layout. The version is
-# read from that file so the two cannot drift.
+# same SHASUMS256.txt verification, same runtime/node layout. The pinned version
+# comes from node-version.txt, which all three bootstrappers read, so they
+# cannot drift.
 #
 # Sticks to tools present on a minimal Ubuntu / Alma-RHEL install, and probes
 # for alternatives (curl vs wget, sha256sum vs shasum vs openssl) rather than
@@ -21,20 +22,24 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 NODE_DIR="${REPO_ROOT}/runtime/node"
 TMP_DIR="${REPO_ROOT}/state/tmp"
-BOOTSTRAP_CJS="${SCRIPT_DIR}/bootstrap-host-native.cjs"
+VERSION_FILE="${SCRIPT_DIR}/node-version.txt"
 
 fail() {
   echo "Error: $*" >&2
   exit 1
 }
 
-# Single source of truth for the version: scripts/runtime/bootstrap-host-native.cjs
+# Single source of truth for the version: scripts/runtime/node-version.txt,
+# shared with bootstrap-host-native.cjs and bootstrap-node.ps1.
 read_node_version() {
-  [[ -f "${BOOTSTRAP_CJS}" ]] ||
-    fail "Missing ${BOOTSTRAP_CJS} - cannot determine the pinned Node.js version."
+  [[ -f "${VERSION_FILE}" ]] ||
+    fail "Missing ${VERSION_FILE} - cannot determine the pinned Node.js version."
   local version
-  version="$(sed -n "s/^const NODE_VERSION = '\(v[0-9.]*\)';.*/\1/p" "${BOOTSTRAP_CJS}" | head -n 1)"
-  [[ -n "${version}" ]] || fail "Could not parse NODE_VERSION from ${BOOTSTRAP_CJS}."
+  # Strip CR as well as LF: the folder is meant to survive a Windows clone being
+  # copied straight onto a Linux box.
+  version="$(tr -d '\r\n' <"${VERSION_FILE}")"
+  [[ "${version}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] ||
+    fail "Invalid Node.js version in ${VERSION_FILE}: '${version}'"
   printf '%s' "${version}"
 }
 

@@ -6,8 +6,9 @@
 # script. pcoder.cmd calls this from its :no_node branch, then re-runs.
 #
 # Mirrors downloadAndExtractNode() in bootstrap-host-native.cjs: same dist URL,
-# same SHASUMS256.txt verification, same runtime\node layout. The version is
-# read from that file so the two cannot drift.
+# same SHASUMS256.txt verification, same runtime\node layout. The pinned version
+# comes from node-version.txt, which all three bootstrappers read, so they
+# cannot drift.
 #
 # Must run under Windows PowerShell 5.1 as well as pwsh, so: ASCII only (5.1
 # reads a UTF-8 file as CP1252, and a mangled byte can terminate a string
@@ -36,21 +37,20 @@ function Fail($message) {
     exit 1
 }
 
-# Single source of truth for the version: scripts/runtime/bootstrap-host-native.cjs
+# Single source of truth for the version: scripts/runtime/node-version.txt,
+# shared with bootstrap-host-native.cjs and bootstrap-node.sh.
 function Get-NodeVersion {
-    $bootstrapCjs = Join-Path $PSScriptRoot 'bootstrap-host-native.cjs'
-    if (-not (Test-Path -LiteralPath $bootstrapCjs)) {
-        Fail "Missing $bootstrapCjs - cannot determine the pinned Node.js version."
+    $versionFile = Join-Path $PSScriptRoot 'node-version.txt'
+    if (-not (Test-Path -LiteralPath $versionFile)) {
+        Fail "Missing $versionFile - cannot determine the pinned Node.js version."
     }
-    # .NET regex rather than Select-String, for the same 5.1 module reason as Get-Sha256.
-    $match = [regex]::Match(
-        [IO.File]::ReadAllText($bootstrapCjs),
-        "(?m)^const NODE_VERSION = '(v[\d.]+)';"
-    )
-    if (-not $match.Success) {
-        Fail "Could not parse NODE_VERSION from $bootstrapCjs."
+    # Raw .NET read, no ConvertFrom-Json/Get-Content: this must work in the same
+    # stripped-down 5.1 host where Get-FileHash could not be resolved.
+    $version = [IO.File]::ReadAllText($versionFile).Trim()
+    if ($version -notmatch '^v\d+\.\d+\.\d+$') {
+        Fail "Invalid Node.js version in ${versionFile}: '$version'"
     }
-    return $match.Groups[1].Value
+    return $version
 }
 
 function Get-NodeArch {
