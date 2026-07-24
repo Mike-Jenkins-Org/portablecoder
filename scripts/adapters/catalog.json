@@ -12,6 +12,7 @@
     "api_key_env": "ANTHROPIC_API_KEY",
     "api_key_alias_env": "ANTHROPIC_AUTH_TOKEN",
     "supports_oauth_login": true,
+    "login_args": ["login"],
     "vm_supported": true,
     "update_args": ["--update", "--upgrade", "update", "upgrade"]
   },
@@ -28,6 +29,7 @@
     "api_key_env": "OPENAI_API_KEY",
     "api_key_alias_env": null,
     "supports_oauth_login": true,
+    "login_args": ["login", "--device-auth"],
     "vm_supported": false,
     "update_args": ["--self-update", "update", "upgrade"]
   }

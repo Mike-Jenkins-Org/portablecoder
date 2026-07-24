@@ -87,6 +87,8 @@ scripts\pcoder auth login --tool codex     :: OpenAI Codex — ChatGPT account o
 
 Each login runs the tool's own `login` flow with `HOME` rewritten to a portable directory, so credentials land under `state/auth/<tool>/host/home/` (gitignored) instead of your user profile. `pcoder auth status` shows the state for every tool.
 
+**Codex logs in with device authorization.** `pcoder` invokes `codex login --device-auth`, which prints a URL and a short code to enter on any device with a browser, instead of opening a local browser and waiting on a `localhost` callback. That suits how PortableCoder is typically run — over SSH, on a headless or locked-down box, or from a folder on a flash drive — where a loopback redirect often can't complete. Claude Code continues to use its own default `login` flow.
+
 ### 3 · Launch
 
 ```bat
@@ -153,7 +155,7 @@ scripts\pcoder runtime bootstrap-host-native --tool all --force
 
 Each tool tracks its own auth mode (`oauth` or `api`).
 
-**OAuth (default)** — credentials are written to `state/auth/<tool>/host/` and travel with the folder. Nothing is stored in system directories.
+**OAuth (default)** — credentials are written to `state/auth/<tool>/host/` and travel with the folder. Nothing is stored in system directories. The exact login command per tool comes from `login_args` in the catalog, so Codex gets `--device-auth` while Claude gets a plain `login`.
 
 **API key mode** — keys are injected from environment variables at launch and never written to disk by PortableCoder:
 
@@ -248,6 +250,8 @@ PortableCoder/
 ## 🧩 Adding a tool
 
 `scripts/adapters/catalog.json` drives everything. To add a new CLI: add an entry with `npm_package`, `bin_name`, `candidate_commands`, `command_env`, `config_dir_name`/`config_dir_env`, `auth_env_vars`, `api_key_env`, and `vm_supported`, then run `pcoder runtime bootstrap-host-native --tool <name>`. No code changes needed — the launcher treats every catalog entry with an `npm_package` as launchable.
+
+Optional `login_args` / `logout_args` set the argv `pcoder auth login|logout` invokes the tool with, for CLIs whose auth flow needs flags — `codex` uses `["login", "--device-auth"]`. Omit them and the bare verb is used.
 
 ## 🔒 Security
 

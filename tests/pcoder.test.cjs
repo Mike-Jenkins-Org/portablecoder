@@ -9,7 +9,8 @@ const {
   shellEscape,
   compareVersions,
   isUpdateCheckDue,
-  readBundledToolVersion
+  readBundledToolVersion,
+  resolveAuthArgs
 } = require('../scripts/pcoder.cjs');
 
 test('parseRunArgs: flags before -- are parsed, args after -- pass through', () => {
@@ -123,6 +124,39 @@ test('node-version.txt: pinned version is well-formed and read by every bootstra
       `${file} hardcodes a Node.js version instead of reading node-version.txt`
     );
   }
+});
+
+test('resolveAuthArgs: catalog login_args win, bare verb otherwise', () => {
+  assert.deepEqual(resolveAuthArgs({ login_args: ['login', '--device-auth'] }, 'login'), [
+    'login',
+    '--device-auth'
+  ]);
+  // logout is unaffected by login_args
+  assert.deepEqual(resolveAuthArgs({ login_args: ['login', '--device-auth'] }, 'logout'), [
+    'logout'
+  ]);
+  assert.deepEqual(resolveAuthArgs({ logout_args: ['logout', '--all'] }, 'logout'), [
+    'logout',
+    '--all'
+  ]);
+  // absent, empty, or malformed config falls back to the bare verb
+  assert.deepEqual(resolveAuthArgs({}, 'login'), ['login']);
+  assert.deepEqual(resolveAuthArgs({ login_args: [] }, 'login'), ['login']);
+  assert.deepEqual(resolveAuthArgs({ login_args: 'login' }, 'login'), ['login']);
+  assert.deepEqual(resolveAuthArgs(undefined, 'login'), ['login']);
+});
+
+test('resolveAuthArgs: returns a copy, so callers cannot mutate the catalog', () => {
+  const meta = { login_args: ['login', '--device-auth'] };
+  resolveAuthArgs(meta, 'login').push('--oops');
+  assert.deepEqual(meta.login_args, ['login', '--device-auth']);
+});
+
+test('catalog: codex logs in with --device-auth, claude with a plain login', () => {
+  const catalog = require('../scripts/adapters/catalog.json');
+  assert.deepEqual(resolveAuthArgs(catalog.codex, 'login'), ['login', '--device-auth']);
+  assert.deepEqual(resolveAuthArgs(catalog.claude, 'login'), ['login']);
+  assert.deepEqual(resolveAuthArgs(catalog.codex, 'logout'), ['logout']);
 });
 
 test('readBundledToolVersion: returns a version string or null, never throws', () => {

@@ -297,6 +297,8 @@ function commandAuth(args) {
     console.log(`[warn] ${tool} auth mode is api; OAuth login is optional.`);
   }
 
+  const toolAuthArgs = resolveAuthArgs(meta, action);
+
   // For the duration of the auth subcommand, force oauth env wiring so the
   // tool writes credentials into our portable auth home rather than relying
   // on an API key.
@@ -313,7 +315,7 @@ function commandAuth(args) {
       tool,
       projectPath: repoRoot,
       mergedEnv: applyPortableHostAuthEnv({ ...process.env }, authCommandSettings, tool),
-      toolArgs: [action],
+      toolArgs: toolAuthArgs,
       noSyncBack: true,
       skipProjectSync: true,
       authMode: 'oauth',
@@ -340,15 +342,29 @@ function commandAuth(args) {
   applyBundledNodePath(env);
   applyClaudeWindowsShellEnv(env, tool);
 
-  const result = spawnToolSync(runner, [action], {
+  const result = spawnToolSync(runner, toolAuthArgs, {
     cwd: repoRoot,
     stdio: 'inherit',
     env
   });
   if (result.error) {
-    fail(`Failed to run ${tool} ${action}: ${result.error.message}`);
+    fail(`Failed to run ${tool} ${toolAuthArgs.join(' ')}: ${result.error.message}`);
   }
   process.exitCode = typeof result.status === 'number' ? result.status : 1;
+}
+
+// Build the argv a tool is invoked with for `pcoder auth login|logout`.
+// Catalog-driven so a tool whose login flow needs flags (codex uses
+// `--device-auth`, which prints a code to enter on another device instead of
+// opening a browser and listening on localhost) needs no code change here.
+// Falls back to the bare verb, which is what most CLIs expect.
+function resolveAuthArgs(meta, action) {
+  const key = action === 'login' ? 'login_args' : 'logout_args';
+  const configured = meta && meta[key];
+  if (Array.isArray(configured) && configured.length > 0) {
+    return configured.slice();
+  }
+  return [action];
 }
 
 function commandRuntime(args) {
@@ -1811,5 +1827,6 @@ module.exports = {
   escapeCmdArg,
   compareVersions,
   isUpdateCheckDue,
-  readBundledToolVersion
+  readBundledToolVersion,
+  resolveAuthArgs
 };
