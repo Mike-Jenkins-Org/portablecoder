@@ -47,8 +47,11 @@ goto :run_portable
 
 :bootstrap_failed
 echo Error: automatic Node.js bootstrap failed.
-echo Install Node.js (winget install OpenJS.NodeJS.LTS) and re-run, or copy a
-echo bootstrapped runtime\node folder from another machine.
+echo If the message above mentions the script is not digitally signed, your
+echo execution policy is enforced by Group Policy; run 'Get-ExecutionPolicy -List'
+echo and see the Execution policy section in README.md.
+echo Otherwise: install Node.js (winget install OpenJS.NodeJS.LTS) and re-run, or
+echo copy a bootstrapped runtime\node folder from another machine.
 exit /b 1
 
 :no_node
