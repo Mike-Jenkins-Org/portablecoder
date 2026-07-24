@@ -16,5 +16,21 @@ if command -v node >/dev/null 2>&1; then
   exec node "${SCRIPT_DIR}/pcoder.cjs" "$@"
 fi
 
+# No Node anywhere. Download a portable one, then continue. The guard stops a
+# failed bootstrap from looping when we re-exec.
+BOOTSTRAP_SH="${SCRIPT_DIR}/runtime/bootstrap-node.sh"
+if [[ -z "${PCODER_NODE_BOOTSTRAPPED:-}" && -z "${PCODER_NO_AUTO_BOOTSTRAP:-}" && -f "${BOOTSTRAP_SH}" ]]; then
+  export PCODER_NODE_BOOTSTRAPPED=1
+  if bash "${BOOTSTRAP_SH}" && [[ -x "${PORTABLE_NODE}" ]]; then
+    echo ''
+    exec "${PORTABLE_NODE}" "${SCRIPT_DIR}/pcoder.cjs" "$@"
+  fi
+  echo 'Error: automatic Node.js bootstrap failed.' >&2
+  echo 'Install Node.js (apt install nodejs / dnf install nodejs) and re-run, or' >&2
+  echo 'copy a bootstrapped runtime/node folder from another machine.' >&2
+  exit 1
+fi
+
 echo "Error: node not found. Bundle runtime/node or install node in PATH." >&2
+echo "Run: bash \"${BOOTSTRAP_SH}\"" >&2
 exit 1
