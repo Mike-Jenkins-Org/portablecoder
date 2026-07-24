@@ -74,6 +74,18 @@ powershell -ExecutionPolicy Bypass -File scripts\runtime\bootstrap-node.ps1
 bash scripts/runtime/bootstrap-node.sh
 ```
 
+> **Windows: use the full command above, not `scripts\runtime\bootstrap-node.ps1` on its own.**
+> The scripts in this repo are unsigned, so on a machine whose execution policy is `AllSigned`
+> (or `RemoteSigned`, if the folder was downloaded as a zip) PowerShell refuses to load the file:
+>
+> ```
+> ... is not digitally signed. You cannot run this script on the current system.
+> ```
+>
+> `-ExecutionPolicy Bypass` applies to that one invocation only and changes nothing on the
+> machine. **You do not need it when using `pcoder`** — `scripts\pcoder` already passes it when
+> it auto-bootstraps. See [Execution policy](#execution-policy-windows) if the flag doesn't help.
+
 To turn the automatic step off — for an air-gapped host, or when you'd rather supply Node.js yourself — set `PCODER_AUTO_BOOTSTRAP=0` (matching `PCODER_AUTO_UPDATE=0`). `pcoder` will then fail with instructions instead of downloading anything.
 
 After the first bootstrap the whole folder is self-contained: copy it to a machine with no Node.js at all and it runs as-is.
@@ -256,6 +268,40 @@ PortableCoder/
 - **Downloads are verified**: Node.js against `SHASUMS256.txt`, the Ubuntu VM image against `SHA256SUMS`, the QEMU installer against its SHA-512. A failed verification removes the artifact rather than leaving it to be trusted later.
 - **Host-native mode** gives the tool the same file access as any program you run; **VM mode** confines it to explicitly synced files.
 - CI runs [gitleaks](https://github.com/gitleaks/gitleaks) on every push.
+
+### Execution policy (Windows)
+
+The `.ps1` scripts in this repo are **not code-signed**. Windows only cares about that when you
+run a script *file* directly, and each entry point already handles it:
+
+| How you run it | Signature needed? |
+| --- | --- |
+| `scripts\pcoder …` (normal use, including auto-bootstrap) | No — it passes `-ExecutionPolicy Bypass` internally |
+| `powershell -ExecutionPolicy Bypass -File scripts\runtime\bootstrap-node.ps1` | No — the flag scopes to that one process |
+| `scripts\runtime\bootstrap-node.ps1` (bare) | **Yes**, and it fails without one |
+
+If the `Bypass` flag doesn't help, your policy is being enforced by Group Policy, which
+command-line flags cannot override. Check which scope is responsible:
+
+```powershell
+Get-ExecutionPolicy -List
+```
+
+A value on `MachinePolicy` or `UserPolicy` means it's set by your organization — the supported
+fix is to ask IT to allow it or to sign the scripts with a certificate your machines already
+trust, **not** to work around the policy. A value on `LocalMachine` or `CurrentUser` is yours to
+change:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+```
+
+If the folder arrived as a downloaded `.zip`, Windows also tags the files as web content, which
+`RemoteSigned` blocks. Clear the tag with:
+
+```powershell
+Get-ChildItem -Recurse *.ps1 | Unblock-File
+```
 
 ## 🔬 Development process
 
