@@ -372,10 +372,6 @@ function downloadFilesSync(files) {
   }
 }
 
-function downloadFileSync(url, dest) {
-  downloadFilesSync([{ url, dest }]);
-}
-
 function sha256File(filePath) {
   return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
 }

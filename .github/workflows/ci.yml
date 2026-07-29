@@ -35,9 +35,14 @@ jobs:
           fetch-depth: 0
 
       - name: Install gitleaks
+        # Pinned version + checksum: CI must not execute whatever binary
+        # "latest" happens to point at.
         run: |
-          VERSION=$(curl -sSf https://api.github.com/repos/gitleaks/gitleaks/releases/latest | grep -oP '"tag_name":\s*"v\K[^"]+')
-          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/latest/download/gitleaks_${VERSION}_linux_x64.tar.gz" | tar xz
+          VERSION=8.30.1
+          SHA256=551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+          curl -sSfL -o gitleaks.tar.gz "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz"
+          echo "${SHA256}  gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf gitleaks.tar.gz gitleaks
           sudo mv gitleaks /usr/local/bin/
 
       - name: Gitleaks
@@ -71,3 +76,32 @@ jobs:
 
       - name: Smoke test
         run: scripts/runtime/linux/smoke-check.sh
+
+  test-windows:
+    name: Test & Validate (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Validate launcher syntax
+        run: node --check scripts/pcoder.cjs
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Initialize settings
+        shell: cmd
+        run: scripts\pcoder.cmd setup --init
+
+      - name: Bootstrap host-native runtime (both tools)
+        shell: cmd
+        run: scripts\pcoder.cmd runtime bootstrap-host-native --tool all
+
+      - name: Doctor check
+        shell: cmd
+        run: scripts\pcoder.cmd doctor

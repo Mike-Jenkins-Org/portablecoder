@@ -36,19 +36,30 @@ function Download-File {
   Invoke-WebRequest -Uri $Url -OutFile $Destination -UseBasicParsing
 }
 
-function Read-FirstHashToken {
-  param([string]$Text)
-  $lines = $Text -split "`r?`n"
-  foreach ($line in $lines) {
+# Extract the expected hash from a checksum file. Prefers a line whose last
+# token names the file (sha512sum "hash  name" format, with or without a
+# leading * for binary mode); falls back to the first token of the first
+# non-empty line for single-hash files.
+function Read-HashToken {
+  param(
+    [string]$Text,
+    [string]$FileName
+  )
+  $fallback = $null
+  foreach ($line in ($Text -split "`r?`n")) {
     $trimmed = $line.Trim()
-    if ($trimmed) {
-      $parts = $trimmed -split '\s+'
-      if ($parts.Length -gt 0) {
-        return $parts[0].ToLowerInvariant()
-      }
+    if (-not $trimmed) {
+      continue
+    }
+    $parts = $trimmed -split '\s+'
+    if ($FileName -and $parts.Length -ge 2 -and ($parts[-1] -replace '^\*', '') -eq $FileName) {
+      return $parts[0].ToLowerInvariant()
+    }
+    if (-not $fallback) {
+      $fallback = $parts[0].ToLowerInvariant()
     }
   }
-  return $null
+  return $fallback
 }
 
 function Install-QemuFromInstaller {
@@ -125,16 +136,22 @@ if ($Force -or -not (Test-Path $qemuExe)) {
     try {
       $shaTempPath = Join-Path $stateTmpDir 'qemu-installer.sha512'
       Download-File -Url $qemuShaUrl -Destination $shaTempPath
-      $expectedHash = Read-FirstHashToken -Text (Get-Content $shaTempPath -Raw)
-      if ($expectedHash) {
-        $actualHash = (Get-FileHash -Path $qemuInstallerPath -Algorithm SHA512).Hash.ToLowerInvariant()
-        if ($actualHash -ne $expectedHash) {
-          throw "QEMU installer hash mismatch. expected=$expectedHash actual=$actualHash"
-        }
+      $expectedHash = Read-HashToken -Text (Get-Content $shaTempPath -Raw) -FileName $qemuInstallerFileName
+      if (-not $expectedHash) {
+        throw "No usable hash found in $qemuShaUrl - refusing to run an unverified installer."
       }
+      $actualHash = (Get-FileHash -Path $qemuInstallerPath -Algorithm SHA512).Hash.ToLowerInvariant()
+      if ($actualHash -ne $expectedHash) {
+        throw "QEMU installer hash mismatch. expected=$expectedHash actual=$actualHash"
+      }
+      Write-Host 'QEMU installer checksum verified (SHA-512).'
     } catch {
+      # Never leave an unverified installer where a later run might execute it.
+      Remove-Item -LiteralPath $qemuInstallerPath -Force -ErrorAction SilentlyContinue
       throw "Failed to validate QEMU installer checksum: $($_.Exception.Message)"
     }
+  } else {
+    Write-Host 'Warning: no SHA-512 URL configured; skipping QEMU installer verification.'
   }
 
   Install-QemuFromInstaller -InstallerPath $qemuInstallerPath -InstallDir $qemuDir
