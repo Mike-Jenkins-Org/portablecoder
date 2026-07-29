@@ -5,6 +5,7 @@ const {
   parseRunArgs,
   isToolUpdateInvocation,
   buildRemoteProjectPath,
+  buildSshOptsString,
   prependPath,
   shellEscape,
   compareVersions,
@@ -61,6 +62,17 @@ test('prependPath: finds existing PATH key case-insensitively and dedupes', () =
   const env2 = { Path: `/usr/bin${sep}/opt/node` };
   prependPath(env2, '/opt/node');
   assert.equal(env2.Path, `/opt/node${sep}/usr/bin${sep}/opt/node`);
+});
+
+// The opts string is embedded in a `bash -c` command line (the tar-over-ssh
+// sync). Every token must be single-quoted: an unquoted Windows key path like
+// C:\Users\me\id_ed25519 would have its backslashes eaten by bash.
+test('buildSshOptsString: quotes every token, including backslash paths', () => {
+  const opts = buildSshOptsString('2222', 'C:\\Users\\me\\id_ed25519');
+  assert.ok(opts.includes(`'-i' 'C:\\Users\\me\\id_ed25519'`), opts);
+  assert.ok(opts.includes(`'-p' '2222'`), opts);
+  assert.match(opts, /'-o' 'UserKnownHostsFile=[^']+'/);
+  assert.ok(opts.endsWith(`'-o' 'BatchMode=yes'`), opts);
 });
 
 test('shellEscape: single quotes are escaped for POSIX sh', () => {

@@ -224,39 +224,31 @@ function commandSetup(args) {
   const parsed = parseSetupArgs(args);
   const hadSettings = settingsFileExists();
   const settings = parsed.init ? defaultSettings() : loadSettings();
-  let changed = parsed.init;
 
   if (parsed.claudeAuth) {
-    changed = changed || settings.auth.claude !== parsed.claudeAuth;
     settings.auth.claude = parsed.claudeAuth;
   }
   if (parsed.codexAuth) {
-    changed = changed || settings.auth.codex !== parsed.codexAuth;
     settings.auth.codex = parsed.codexAuth;
   }
   if (parsed.defaultTool) {
-    changed = changed || settings.default_tool !== parsed.defaultTool;
     settings.default_tool = parsed.defaultTool;
   }
   if (parsed.windowsMode) {
-    changed = changed || settings.runtime.windows_default_mode !== parsed.windowsMode;
     settings.runtime.windows_default_mode = parsed.windowsMode;
   }
   if (typeof parsed.syncBack === 'boolean') {
-    changed = changed || settings.runtime.sync_back_default !== parsed.syncBack;
     settings.runtime.sync_back_default = parsed.syncBack;
   }
   if (typeof parsed.autoUpdate === 'boolean') {
-    changed = changed || settings.auto_update !== parsed.autoUpdate;
     settings.auto_update = parsed.autoUpdate;
   }
 
-  const shouldSave = changed || parsed.persist;
+  // Every flag that mutates settings also sets persist, so it doubles as
+  // the "anything to save" signal.
+  const shouldSave = parsed.persist;
   if (shouldSave) {
     saveSettings(settings);
-  }
-
-  if (shouldSave) {
     console.log('Setup saved to state/settings.json');
     console.log('');
   } else if (!hadSettings) {
@@ -290,7 +282,10 @@ function commandAuth(args) {
   const parsed = parseAuthArgs(args.slice(1));
   const tool = resolveTool(parsed.tool, settings);
   const meta = getToolMeta(tool);
-  const mode = resolveRunMode(parsed.mode, settings);
+  // Pass the tool so the same host-native auto-fallback applies as in
+  // commandRun — otherwise login could store credentials in the VM home
+  // while runs resolve to host-native and never see them.
+  const mode = resolveRunMode(parsed.mode, settings, tool);
   const authMode = settings.auth[tool] || 'oauth';
 
   if (action === 'login' && authMode === 'api') {
@@ -922,7 +917,16 @@ function applyPortableHostAuthEnv(env, settings, tool) {
   }
 
   const authPaths = getPortableHostAuthPaths(tool);
-  ensureDir(authPaths.root);
+  // authPaths.root gates the whole credential tree, so keep it owner-only on
+  // POSIX (other local users must not be able to traverse into OAuth tokens).
+  // The chmod also repairs trees created world-readable by older versions.
+  // Windows ignores POSIX modes and relies on ACLs.
+  ensureDir(authPaths.root, 0o700);
+  if (process.platform !== 'win32') {
+    try {
+      fs.chmodSync(authPaths.root, 0o700);
+    } catch (_) {}
+  }
   ensureDir(authPaths.home);
   ensureDir(authPaths.config);
   ensureDir(authPaths.cache);
@@ -1705,10 +1709,13 @@ function baseSshArgs(sshPort, sshKeyPath) {
   ];
 }
 
+// Every token is escaped, not just ones with spaces: this string is embedded
+// in a `bash -c` command line, where an unquoted Windows path like
+// C:\Users\me\id_ed25519 has its backslashes eaten as escape characters.
 function buildSshOptsString(sshPort, sshKeyPath) {
   return baseSshArgs(sshPort, sshKeyPath)
-    .map((a) => (a.includes(' ') || a.includes("'") ? shellEscape(a) : a))
     .concat(['-o', 'BatchMode=yes'])
+    .map(shellEscape)
     .join(' ');
 }
 
@@ -1816,9 +1823,9 @@ function commandExists(command) {
   return result.status === 0;
 }
 
-function ensureDir(dirPath) {
+function ensureDir(dirPath, mode) {
   if (!fs.existsSync(dirPath)) {
-    fs.mkdirSync(dirPath, { recursive: true });
+    fs.mkdirSync(dirPath, mode === undefined ? { recursive: true } : { recursive: true, mode });
   }
 }
 
@@ -1846,6 +1853,7 @@ module.exports = {
   parseRunArgs,
   isToolUpdateInvocation,
   buildRemoteProjectPath,
+  buildSshOptsString,
   prependPath,
   shellEscape,
   escapeCmdArg,
